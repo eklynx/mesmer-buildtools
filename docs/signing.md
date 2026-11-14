@@ -21,7 +21,7 @@ Code from the project runs only in the jobs without secrets. The `sign` job runs
 scripts, and only inspects the plugin (`lipo`, `otool`, `nm`, `codesign`); it never loads or runs it.
 There is no manual approval; the automated checks and the source rules are the gate.
 
-Result: the artifact `signed-plugin` (30 days) holding `BrunnerDirect.xpl` (signed, notarized),
+Result: the artifact `signed-plugin` (kept 3 days; `unsigned-xpl` and `codeql-sarif` too) holding `BrunnerDirect.xpl` (signed, notarized),
 `BrunnerDirect.xpl.sha256` and `provenance.json` (source repository, ref, commit, unsigned and signed
 SHA-256, signer, run URL, time). The signed file also has a build provenance attestation:
 `gh attestation verify BrunnerDirect.xpl --repo eklynx/mesmer-buildtools`.
@@ -76,3 +76,22 @@ edited the schedule). Tests: `tests/test-remind-expiry.sh` (a fake `gh`).
 GitHub disables scheduled workflows in a public repository with no activity for 60 days; a commit or a
 manual run restarts them. Apple also emails the account holder before a Developer ID certificate expires.
 Binaries already signed with a timestamp stay valid after the certificate expires.
+
+## Calling it from a release workflow
+
+A project's release workflow can use this pipeline without any person starting it. The contract, which a
+different signing repository could also follow:
+
+- Start `sign-mesmer.yml` with `repo` (the repository being released) and `ref` (the release commit's full
+  SHA). Only the allowlisted repositories are accepted ([source-rules.md](source-rules.md)).
+- The run's title is `sign <repo>@<ref>`, so the caller can find its own run among others.
+- On success the run uploads the artifact `signed-plugin`: `BrunnerDirect.xpl`, `BrunnerDirect.xpl.sha256`
+  and `provenance.json` (`source.repository`, `source.commit`, `notarized`, `signer`, `run`, hashes). The
+  caller must check `provenance.json` names the repository and commit it asked for, that the hash matches the
+  file, and (`gh attestation verify`) that the file was attested by this repository.
+- Any other outcome is a failure the caller must treat as one.
+
+The caller needs a token that may start workflows and read artifacts here: a fine-grained personal access
+token for this repository only, with **Actions: read and write** and nothing else. The allowlist does not
+authenticate the caller, it limits what a token can make this repository build; a token can never read the
+signing key. Artifacts are kept for 3 days, long enough for the caller to fetch them in the same run.

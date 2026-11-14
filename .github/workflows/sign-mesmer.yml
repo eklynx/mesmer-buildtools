@@ -10,6 +10,7 @@
 #   sign            only if all of those passed: gets the key, never runs the source or the plugin
 # There is no manual approval step. Result: the artifact `signed-plugin`.
 name: sign-mesmer
+run-name: sign ${{ inputs.repo }}@${{ inputs.ref }}   # the caller finds its run by this title (docs/signing.md, "Calling it from a release workflow")
 
 on:
   workflow_dispatch:
@@ -133,7 +134,7 @@ jobs:
           name: unsigned-xpl
           path: unsigned/BrunnerDirect.xpl
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
 
   codeql:
     needs: plan
@@ -190,7 +191,7 @@ jobs:
           name: codeql-sarif
           path: sarif-results/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
   sign:
     needs: [plan, build-and-vet, codeql]
@@ -273,4 +274,4 @@ jobs:
           name: signed-plugin
           path: signed/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
