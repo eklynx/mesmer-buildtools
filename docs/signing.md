@@ -47,3 +47,17 @@ hardened runtime flag, or notarization that is not `Accepted` (the notary log is
 
 `--no-notarize`, `--no-timestamp` and `--authority-prefix` exist for tests and dry runs; the workflow
 never passes them.
+
+## Checking the secrets
+
+`scripts/check_secrets.sh` and the `check-secrets` workflow (run by hand, in the `code-signing`
+Environment) test the stored secrets without signing or notarizing anything. They print only pass/fail
+lines and the certificate's expiry date, never a value (the log of a public repository is public).
+Tests: `tests/test-check-secrets.sh`.
+
+It checks that: `TEAM_ID`, `NOTARY_KEY_ID` and `NOTARY_ISSUER_ID` have the right shape and
+`SIGNING_IDENTITY` is a `Developer ID Application` name ending in the team id; `NOTARY_API_KEY_P8` is a
+whole, readable private key; the `.p12` imports with its password, holds a private key for exactly
+`SIGNING_IDENTITY`, has not expired (a note if it expires within 30 days), carries the team id, and was
+issued by Apple's Developer ID authority; and Apple accepts the notary key, key id and issuer id together
+(a read-only call listing past submissions). Any failure exits non-zero.

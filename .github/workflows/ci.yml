@@ -24,3 +24,5 @@ jobs:
         run: bash tests/test-verify-plugin.sh
       - name: Signing script (no key, no network)
         run: bash tests/test-sign-and-notarize.sh
+      - name: Secrets check (no key, no network)
+        run: bash tests/test-check-secrets.sh

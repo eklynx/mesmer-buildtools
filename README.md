@@ -18,6 +18,6 @@ scans the source and the plugin, and only then signs and notarizes it and return
 | [SECURITY.md](SECURITY.md) | the threat model and its limits |
 
 Tests (macOS): `tests/test-verify-plugin.sh`, `tests/test-sign-and-notarize.sh`,
-`tests/test-resolve-source.sh`.
+`tests/test-check-secrets.sh`, `tests/test-resolve-source.sh`.
 
 Licensed under the Apache License 2.0 (see `LICENSE`).
