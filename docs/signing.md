@@ -14,7 +14,7 @@ do not sign).
 |---|---|---|
 | `plan` | none | `resolve_source.sh`: allowlist, plain ref, a real branch or tag (never a SHA), ref rule, one SHA |
 | `build-and-vet` | none | builds the SHA with the project's `build_macos.sh`, `verify_plugin.sh`, ClamAV, a run summary, uploads `unsigned-xpl` |
-| `codeql` | none | CodeQL C++ (`security-extended`, `build-mode: none`: it reads the source without building it, because tracing the macOS build hung) on the source; any `error`-level result fails the job |
+| `codeql` | none | CodeQL C++ and JavaScript/TypeScript (the feel page) (`security-extended`, `build-mode: none`: it reads the source without building it, because tracing the macOS build hung) on the source; any `error`-level result fails the job |
 | `sign` | Environment `code-signing` | only if all of the above passed: checks the file's SHA-256 against the vetted one, runs `verify_plugin.sh` again, signs, notarizes, writes `provenance.json`, attests, uploads `signed-plugin` |
 
 Code from the project runs only in the jobs without secrets. The `sign` job runs only this repository's
