@@ -66,7 +66,7 @@ issued by Apple's Developer ID authority; and Apple accepts the notary key, key 
 
 The `cert-expiry` workflow runs every Monday (14:00 UTC) and can be run by hand. Its `check` job (the
 `code-signing` Environment) runs `check_secrets.sh` and reports only the whole days left and the expiry
-date (`expires_in_days=`, `expires_on=`). Its `remind` job has no secrets and `issues: write`: when 30
+date (`expires_in_days=`, `expires_on=`). Its `remind` job has no secrets and `issues: write`: when 15
 days or fewer are left (the `threshold_days` input of a manual run overrides this, to test it) it runs
 `scripts/remind_expiry.sh`, which opens an issue labelled `certificate-expiry`, assigned to the repository
 owner, so GitHub emails them. At most one reminder issue is open: later runs update it. An expired

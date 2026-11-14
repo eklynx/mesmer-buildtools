@@ -1,4 +1,4 @@
-# Weekly: check the signing certificate and open an issue (which emails the owner) when it has 30 days
+# Weekly: check the signing certificate and open an issue (which emails the owner) when it has 15 days
 # or fewer left. Specification: docs/signing.md ("Expiry reminder"). Can also be run by hand; the
 # threshold_days input exists to test it (a large number forces an issue).
 #
@@ -14,7 +14,7 @@ on:
       threshold_days:
         description: Open an issue when this many days or fewer are left
         type: string
-        default: "30"
+        default: "15"
 
 permissions: {}
 
@@ -76,7 +76,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DAYS: ${{ needs.check.outputs.days }}
           EXPIRES: ${{ needs.check.outputs.expires }}
-          THRESHOLD: ${{ inputs.threshold_days || '30' }}
+          THRESHOLD: ${{ inputs.threshold_days || '15' }}
         run: |
           scripts/remind_expiry.sh --days "$DAYS" --expires "$EXPIRES" --threshold "$THRESHOLD" \
             --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER"
