@@ -1,0 +1,82 @@
+# Weekly: check the signing certificate and open an issue (which emails the owner) when it has 30 days
+# or fewer left. Specification: docs/signing.md ("Expiry reminder"). Can also be run by hand; the
+# threshold_days input exists to test it (a large number forces an issue).
+#
+# The same split as the signing pipeline: the job that sees the secrets only reports a number and a
+# date; the job that may write issues sees no secrets.
+name: cert-expiry
+
+on:
+  schedule:
+    - cron: "0 14 * * 1"   # Mondays, 14:00 UTC
+  workflow_dispatch:
+    inputs:
+      threshold_days:
+        description: Open an issue when this many days or fewer are left
+        type: string
+        default: "30"
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: macos-15
+    timeout-minutes: 10
+    environment: code-signing
+    permissions:
+      contents: read
+    outputs:
+      days: ${{ steps.check.outputs.days }}
+      expires: ${{ steps.check.outputs.expires }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the secrets and read the expiry
+        id: check
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_API_KEY_P8 }}
+          SIGNING_IDENTITY: ${{ vars.SIGNING_IDENTITY }}
+          TEAM_ID: ${{ vars.TEAM_ID }}
+          NOTARY_KEY_ID: ${{ vars.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ vars.NOTARY_ISSUER_ID }}
+        run: |
+          umask 077
+          dir="$RUNNER_TEMP/secrets"
+          mkdir -p "$dir"
+          trap 'rm -rf "$dir"' EXIT
+          echo "$P12_BASE64" | base64 --decode > "$dir/developer-id.p12" 2>/dev/null || true
+          printf '%s' "$NOTARY_KEY" > "$dir/notary.p8"
+          set +e
+          scripts/check_secrets.sh --p12 "$dir/developer-id.p12" --p12-password-env P12_PASSWORD \
+            --identity "$SIGNING_IDENTITY" --team-id "$TEAM_ID" \
+            --notary-key "$dir/notary.p8" --notary-key-id "$NOTARY_KEY_ID" --notary-issuer "$NOTARY_ISSUER_ID" | tee "$RUNNER_TEMP/check.txt"
+          status=${PIPESTATUS[0]}
+          set -e
+          sed -n 's/^expires_in_days=/days=/p;s/^expires_on=/expires=/p' "$RUNNER_TEMP/check.txt" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+  remind:
+    needs: check
+    # Even when the check failed (an expired certificate fails it), as long as it read a date.
+    if: ${{ !cancelled() && needs.check.outputs.days != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Open or update the reminder issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DAYS: ${{ needs.check.outputs.days }}
+          EXPIRES: ${{ needs.check.outputs.expires }}
+          THRESHOLD: ${{ inputs.threshold_days || '30' }}
+        run: |
+          scripts/remind_expiry.sh --days "$DAYS" --expires "$EXPIRES" --threshold "$THRESHOLD" \
+            --repo "$GITHUB_REPOSITORY" --assignee "$GITHUB_REPOSITORY_OWNER"

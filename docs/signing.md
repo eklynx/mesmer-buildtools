@@ -61,3 +61,18 @@ whole, readable private key; the `.p12` imports with its password, holds a priva
 `SIGNING_IDENTITY`, has not expired (a note if it expires within 30 days), carries the team id, and was
 issued by Apple's Developer ID authority; and Apple accepts the notary key, key id and issuer id together
 (a read-only call listing past submissions). Any failure exits non-zero.
+
+## Expiry reminder
+
+The `cert-expiry` workflow runs every Monday (14:00 UTC) and can be run by hand. Its `check` job (the
+`code-signing` Environment) runs `check_secrets.sh` and reports only the whole days left and the expiry
+date (`expires_in_days=`, `expires_on=`). Its `remind` job has no secrets and `issues: write`: when 30
+days or fewer are left (the `threshold_days` input of a manual run overrides this, to test it) it runs
+`scripts/remind_expiry.sh`, which opens an issue labelled `certificate-expiry`, assigned to the repository
+owner, so GitHub emails them. At most one reminder issue is open: later runs update it. An expired
+certificate gets an "expired" issue (the check itself fails then too, and GitHub emails the person who last
+edited the schedule). Tests: `tests/test-remind-expiry.sh` (a fake `gh`).
+
+GitHub disables scheduled workflows in a public repository with no activity for 60 days; a commit or a
+manual run restarts them. Apple also emails the account holder before a Developer ID certificate expires.
+Binaries already signed with a timestamp stay valid after the certificate expires.

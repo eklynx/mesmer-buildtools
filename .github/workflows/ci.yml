@@ -26,3 +26,5 @@ jobs:
         run: bash tests/test-sign-and-notarize.sh
       - name: Secrets check (no key, no network)
         run: bash tests/test-check-secrets.sh
+      - name: Expiry reminder (a fake gh)
+        run: bash tests/test-remind-expiry.sh

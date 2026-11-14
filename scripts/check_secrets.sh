@@ -5,7 +5,7 @@
 #   scripts/check_secrets.sh --p12 FILE --p12-password-env VAR --identity NAME --team-id ID \
 #       --notary-key FILE --notary-key-id ID --notary-issuer ID [--skip-apple]
 #
-# Prints only pass/fail lines and the certificate's expiry date, never a secret, because the log
+# Prints only pass/fail lines, the certificate's expiry (expires_in_days=, expires_on=), never a secret, because the log
 # of a public repository is public. The certificate goes into a throwaway keychain that is deleted
 # on every exit. Written for macOS's stock bash 3.2.
 set -uo pipefail
@@ -90,6 +90,12 @@ else
         security find-certificate -c "$identity" -p "$keychain" > "$cert" 2>/dev/null
         if [ -s "$cert" ]; then
             end="$(/usr/bin/openssl x509 -in "$cert" -noout -enddate 2>/dev/null | sed 's/^notAfter=//')"
+            end_epoch="$(TZ=UTC date -j -f "%b %e %T %Y %Z" "$end" +%s 2>/dev/null)"
+            if [ -n "$end_epoch" ]; then
+                # Machine-readable, for the expiry reminder: whole days left (negative once expired), and the date.
+                echo "expires_in_days=$(( (end_epoch - $(date +%s)) / 86400 ))"
+                echo "expires_on=$(TZ=UTC date -j -f "%s" "$end_epoch" +%Y-%m-%d)"
+            fi
             /usr/bin/openssl x509 -in "$cert" -noout -checkend 0 >/dev/null 2>&1 && pass "the certificate has not expired (expires $end)" || fail "the certificate expired on $end"
             /usr/bin/openssl x509 -in "$cert" -noout -checkend 2592000 >/dev/null 2>&1 || echo "note: the certificate expires within 30 days ($end)"
             subject="$(/usr/bin/openssl x509 -in "$cert" -noout -subject 2>/dev/null)"

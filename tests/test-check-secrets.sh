@@ -61,6 +61,9 @@ says "ok   the certificate's team is TEAM_ID"; check $? "the certificate's team 
 says "ok   NOTARY_API_KEY_P8 is a readable private key"; check $? "a PEM private key passes"
 says "FAIL the certificate was not issued by Apple's Developer ID authority"; check $? "a certificate not issued by Apple fails (as a throwaway one must)"
 [ $code -ne 0 ]; check $? "the run exits non-zero when any check fails"
+days="$(echo "$out" | sed -n 's/^expires_in_days=//p')"
+[ -n "$days" ] && [ "$days" -ge 0 ] && [ "$days" -le 2 ]; check $? "it reports the days left for the expiry reminder (the throwaway certificate has 2: got '$days')"
+echo "$out" | grep -E -q '^expires_on=[0-9]{4}-[0-9]{2}-[0-9]{2}$'; check $? "it reports the expiry date as YYYY-MM-DD"
 
 export WRONG_PW="nope"
 with --p12-password-env WRONG_PW; says "FAIL the .p12 does not import"; check $? "a wrong password fails"
