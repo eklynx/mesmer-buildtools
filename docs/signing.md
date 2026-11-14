@@ -12,7 +12,7 @@ do not sign).
 
 | Job | Secrets | What it does |
 |---|---|---|
-| `plan` | none | `resolve_source.sh`: allowlist, plain ref, ref rule, one SHA |
+| `plan` | none | `resolve_source.sh`: allowlist, plain ref, a real branch or tag (never a SHA), ref rule, one SHA |
 | `build-and-vet` | none | builds the SHA with the project's `build_macos.sh`, `verify_plugin.sh`, ClamAV, a run summary, uploads `unsigned-xpl` |
 | `codeql` | none | CodeQL C++ (`security-extended`, `build-mode: none`: it reads the source without building it, because tracing the macOS build hung) on the source; any `error`-level result fails the job |
 | `sign` | Environment `code-signing` | only if all of the above passed: checks the file's SHA-256 against the vetted one, runs `verify_plugin.sh` again, signs, notarizes, writes `provenance.json`, attests, uploads `signed-plugin` |
@@ -82,12 +82,13 @@ Binaries already signed with a timestamp stay valid after the certificate expire
 A project's release workflow can use this pipeline without any person starting it. The contract, which a
 different signing repository could also follow:
 
-- Start `sign-mesmer.yml` with `repo` (the repository being released) and `ref` (the release commit's full
-  SHA). Only the allowlisted repositories are accepted ([source-rules.md](source-rules.md)).
+- Start `sign-mesmer.yml` with `repo` (the repository being released) and `ref` (the name of the tag or
+  branch being released; a bare commit SHA is refused, see [source-rules.md](source-rules.md)). Only the allowlisted repositories are accepted ([source-rules.md](source-rules.md)).
 - The run's title is `sign <repo>@<ref>`, so the caller can find its own run among others.
 - On success the run uploads the artifact `signed-plugin`: `BrunnerDirect.xpl`, `BrunnerDirect.xpl.sha256`
   and `provenance.json` (`source.repository`, `source.commit`, `notarized`, `signer`, `run`, hashes). The
-  caller must check `provenance.json` names the repository and commit it asked for, that the hash matches the
+  caller must check `provenance.json` names the repository, ref and commit it expects (a release knows its
+  own commit), that the hash matches the
   file, and (`gh attestation verify`) that the file was attested by this repository.
 - Any other outcome is a failure the caller must treat as one.
 

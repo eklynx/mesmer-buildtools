@@ -3,7 +3,7 @@
 # Specification: docs/source-rules.md (the source of truth for the allowlist and the ref rule).
 # Tests: tests/test-resolve-source.sh.
 #
-#   scripts/resolve_source.sh --repo OWNER/NAME --ref REF [--help]
+#   scripts/resolve_source.sh --repo OWNER/NAME --ref NAME [--help]
 #
 # Prints repo=, ref=, sha= and default_branch= lines (the form GITHUB_OUTPUT takes) and exits 0, or
 # prints `resolve_source.sh: <reason>` to stderr and exits non-zero. Needs the gh CLI (a token is
@@ -24,7 +24,7 @@ usage() {
     cat <<EOF
 
   --repo OWNER/NAME   one of: $ALLOWED_REPOS
-  --ref REF           a branch, tag or commit SHA of that repository
+  --ref NAME          a branch or tag of that repository (a bare commit SHA is refused)
 EOF
 }
 
@@ -45,9 +45,16 @@ done
 [ -n "$repo" ] || die "--repo is required"
 [ -n "$ref" ] || die "--ref is required"
 word_in "$repo" "$ALLOWED_REPOS" || die "repository $repo is not on the allowlist ($ALLOWED_REPOS)"
-echo "$ref" | grep -E -q '^[A-Za-z0-9][A-Za-z0-9._/-]*$' || die "ref '$ref' has characters a branch, tag or SHA does not"
+echo "$ref" | grep -E -q '^[A-Za-z0-9][A-Za-z0-9._/-]*$' || die "ref '$ref' has characters a branch or tag name does not"
 case "$ref" in *..*) die "ref '$ref' contains '..'" ;; esac
+echo "$ref" | grep -E -q '^[0-9a-f]{40}$' && die "ref must be a branch or tag name, not a commit SHA (a SHA can come from another fork of the repository)"
 command -v gh >/dev/null 2>&1 || die "the gh CLI is not installed"
+
+# The ref must be a branch or tag of this very repository (the refs API answers only for the
+# repository's own refs; a commit that exists only in another fork of its network is not one).
+gh api "repos/$repo/git/ref/heads/$ref" --jq .ref >/dev/null 2>&1 \
+    || gh api "repos/$repo/git/ref/tags/$ref" --jq .ref >/dev/null 2>&1 \
+    || die "'$ref' is not a branch or tag of $repo"
 
 sha="$(gh api "repos/$repo/commits/$ref" --jq .sha 2>/dev/null)" || sha=""
 echo "$sha" | grep -E -q '^[0-9a-f]{40}$' || die "ref '$ref' does not resolve to a commit in $repo"

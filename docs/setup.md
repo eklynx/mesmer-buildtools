@@ -30,7 +30,7 @@ repository: you create the secrets yourself.
 
 ## Running it
 
-Actions, `sign-mesmer`, Run workflow: pick the repository and the branch or tag. Tick `dry_run` first to
+Actions, `sign-mesmer`, Run workflow: pick the repository and the branch or tag name (not a commit SHA). Tick `dry_run` first to
 see the build and checks without signing. When it finishes, download `signed-plugin` from the run and
 put `BrunnerDirect.xpl` into the plugin's `mac_x64/` folder (for a release, repackage with the
 project's `src/scripts/package_release.sh --win DIR --mac DIR`: replacing the file inside a published

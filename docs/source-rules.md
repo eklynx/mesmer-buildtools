@@ -17,9 +17,15 @@ build or any secret is involved.
    name, is refused.
 2. **Plain refs.** A ref starts with a letter or digit and holds only letters, digits, `.`, `_`, `-`
    and `/`, with no `..`. Options, spaces, quotes and shell characters are refused.
-3. **One commit.** The ref must resolve to a commit of that repository; the build uses the SHA, never
-   the ref, so a branch that moves during the run cannot change what is signed.
-4. **Ref rule for `antialias/mesmer`.** It is not the owner's repository, so its SHA must be on its
+3. **A real branch or tag, never a SHA.** The ref must be the name of a branch or tag that exists in
+   that repository itself (checked through the refs API, which answers only for the repository's own refs).
+   A bare commit SHA, full or abbreviated, is refused: GitHub can resolve a commit that exists only in
+   another fork of the repository's network through the parent's API, so a SHA proves nothing about where
+   the commit came from.
+4. **One commit.** The name is resolved to a commit and the build uses that SHA, never the name, so a
+   branch that moves during the run cannot change what is signed. A caller that knows the commit it wants
+   (a release) checks the finished plugin's `provenance.json` names that commit.
+5. **Ref rule for `antialias/mesmer`.** It is not the owner's repository, so its SHA must be on its
    default branch or carry a tag. An unreviewed contributor branch is never signed. `eklynx/mesmer`
    (the owner's own) accepts any ref.
 

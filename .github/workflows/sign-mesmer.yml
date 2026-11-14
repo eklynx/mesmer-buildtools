@@ -23,7 +23,7 @@ on:
           - antialias/mesmer
           - eklynx/mesmer
       ref:
-        description: "Branch, tag or commit to build (for antialias/mesmer it must be on main or tagged)"
+        description: "Branch or tag name to build (for antialias/mesmer it must be on main or tagged; a commit SHA is refused)"
         type: string
         required: true
       base:

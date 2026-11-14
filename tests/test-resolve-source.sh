@@ -29,9 +29,17 @@ export PATH="$sandbox/bin:$PATH"
 answer() { printf '%s\n' "$2" > "$FAKE_GH_DIR/$(echo "$1" | tr '/.' '__')"; }
 
 # antialias/mesmer: main is $SHA_MAIN; $SHA_TAGGED is tagged but not on main; $SHA_LOOSE is a loose branch.
+answer "repos/antialias/mesmer/git/ref/heads/main" "refs/heads/main"
+answer "repos/antialias/mesmer/git/ref/tags/v1.0.0" "refs/tags/v1.0.0"
+answer "repos/antialias/mesmer/git/ref/heads/contrib" "refs/heads/contrib"
+answer "repos/eklynx/mesmer/git/ref/heads/wip" "refs/heads/wip"
 answer "repos/antialias/mesmer/commits/main" "$SHA_MAIN"
 answer "repos/antialias/mesmer/commits/v1.0.0" "$SHA_TAGGED"
 answer "repos/antialias/mesmer/commits/contrib" "$SHA_LOOSE"
+# A commit that exists only in another fork of the network: the commits API will resolve its SHA (and a
+# name that only the commits API knows), but it is no branch or tag of the repository itself.
+answer "repos/eklynx/mesmer/commits/$SHA_LOOSE" "$SHA_LOOSE"
+answer "repos/eklynx/mesmer/commits/forkonly" "$SHA_LOOSE"
 answer "repos/antialias/mesmer" "main"
 answer "repos/antialias/mesmer/compare/main...$SHA_MAIN" "identical"
 answer "repos/antialias/mesmer/compare/main...$SHA_TAGGED" "diverged"
@@ -54,10 +62,16 @@ run --repo antialias/mesmer-evil --ref main
 [ $code -ne 0 ] && echo "$out" | grep -q "not on the allowlist"; check $? "a look-alike repository name is rejected"
 for bad in '--upload-pack=x' 'a b' 'a..b' 'x;y' '$(id)'; do
     run --repo eklynx/mesmer --ref "$bad"
-    [ $code -ne 0 ] && echo "$out" | grep -q -E "characters a branch|contains '..'|needs a value|unknown option"; check $? "the ref '$bad' is rejected"
+    [ $code -ne 0 ] && echo "$out" | grep -q -E "characters a branch or tag name|contains '..'|needs a value|unknown option"; check $? "the ref '$bad' is rejected"
 done
 run --repo eklynx/mesmer --ref nosuchbranch
-[ $code -ne 0 ] && echo "$out" | grep -q "does not resolve to a commit"; check $? "a ref that does not resolve is rejected"
+[ $code -ne 0 ] && echo "$out" | grep -q "is not a branch or tag of eklynx/mesmer"; check $? "a name that is no branch or tag of the repository is rejected"
+run --repo eklynx/mesmer --ref "$SHA_LOOSE"
+[ $code -ne 0 ] && echo "$out" | grep -q "not a commit SHA"; check $? "a bare commit SHA is rejected (it could come from another fork)"
+run --repo eklynx/mesmer --ref abc1234
+[ $code -ne 0 ] && echo "$out" | grep -q "is not a branch or tag"; check $? "an abbreviated SHA is rejected"
+run --repo eklynx/mesmer --ref forkonly
+[ $code -ne 0 ] && echo "$out" | grep -q "is not a branch or tag of eklynx/mesmer"; check $? "a name only the commits API resolves (a fork's) is rejected"
 
 run --repo antialias/mesmer --ref main
 [ $code -eq 0 ] && echo "$out" | grep -q "^sha=$SHA_MAIN$" && echo "$out" | grep -q "^repo=antialias/mesmer$"; check $? "antialias main resolves to its commit"
