@@ -1,0 +1,12 @@
+# What the Mesmer macOS plugin may link and import. Enforced by scripts/verify_plugin.sh
+# (spec: docs/verification.md). A library or watched symbol not listed here fails the build until
+# you read the change and add it here in a commit of this repository.
+#
+# lib PATH      a library the plugin may link (exactly as `otool -L` prints it)
+# symbol NAME   a watched import it may use (network clients, the loader, the keychain)
+lib @executable_path/../../../Resources/plugins/XPLM.framework/XPLM
+lib /System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL
+lib /System/Library/Frameworks/IOKit.framework/Versions/A/IOKit
+lib /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
+lib /usr/lib/libc++.1.dylib
+lib /usr/lib/libSystem.B.dylib

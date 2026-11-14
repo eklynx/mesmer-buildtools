@@ -1,0 +1,26 @@
+# The scripts' own tests, on every push and pull request. No secrets and no signing.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  tests:
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Source rules
+        run: bash tests/test-resolve-source.sh
+      - name: Plugin verification
+        run: bash tests/test-verify-plugin.sh
+      - name: Signing script (no key, no network)
+        run: bash tests/test-sign-and-notarize.sh

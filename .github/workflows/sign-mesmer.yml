@@ -1,0 +1,260 @@
+# Build one commit of Mesmer for macOS, vet it, and sign and notarize it with the owner's Developer ID.
+# Run by hand (workflow_dispatch) by the owner of this repository: pick the repository, the branch or
+# tag, and (optionally) an older ref to diff against. Specification: docs/signing.md and
+# docs/source-rules.md; what is checked: docs/verification.md; one-time setup: docs/setup.md.
+#
+# The rule the whole file follows: code from the project never runs in a job that can see the key.
+#   plan            resolves the ref to one commit and refuses anything off the allowlist
+#   build-and-vet   builds that commit and checks the result; no secrets
+#   codeql          static analysis of the source; no secrets
+#   sign            only if all of those passed: gets the key, never runs the source or the plugin
+# There is no manual approval step. Result: the artifact `signed-plugin`.
+name: sign-mesmer
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: Source repository
+        type: choice
+        required: true
+        options:
+          - antialias/mesmer
+          - eklynx/mesmer
+      ref:
+        description: "Branch, tag or commit to build (for antialias/mesmer it must be on main or tagged)"
+        type: string
+        required: true
+      base:
+        description: Older ref to diff against in the summary (default the newest v* tag)
+        type: string
+        required: false
+      dry_run:
+        description: Build and vet only; do not sign
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: sign-mesmer
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      repo: ${{ steps.resolve.outputs.repo }}
+      ref: ${{ steps.resolve.outputs.ref }}
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve the ref to one commit (allowlist and ref rule)
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_REPO: ${{ inputs.repo }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: scripts/resolve_source.sh --repo "$INPUT_REPO" --ref "$INPUT_REF" >> "$GITHUB_OUTPUT"
+
+  build-and-vet:
+    needs: plan
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      sha256: ${{ steps.hash.outputs.sha256 }}
+    steps:
+      - name: Check out these scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out the source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.plan.outputs.repo }}
+          ref: ${{ needs.plan.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Build and test (the project's own script)
+        run: source/src/scripts/build_macos.sh
+      - name: Verify it is an X-Plane plugin of the expected shape
+        run: |
+          scripts/verify_plugin.sh source/build/stage/BrunnerDirect/mac_x64/BrunnerDirect.xpl \
+            --allow baselines/mesmer-allow.txt --imports-snapshot baselines/mesmer-imports.txt | tee vet.txt
+      - name: Scan for malware (ClamAV)
+        run: |
+          brew install clamav
+          conf="$(brew --prefix)/etc/clamav"
+          cp "$conf/freshclam.conf.sample" "$conf/freshclam.conf"
+          sed -i '' 's/^Example/#Example/' "$conf/freshclam.conf"
+          freshclam
+          clamscan --recursive --infected --suppress-ok-results source source/build/stage 2>&1 | tee clamav.txt
+          [ "${PIPESTATUS[0]}" -eq 0 ]
+      - name: Hash the plugin and write the summary
+        id: hash
+        env:
+          REPO: ${{ needs.plan.outputs.repo }}
+          REF: ${{ needs.plan.outputs.ref }}
+          SHA: ${{ needs.plan.outputs.sha }}
+          BASE: ${{ inputs.base }}
+        run: |
+          xpl=source/build/stage/BrunnerDirect/mac_x64/BrunnerDirect.xpl
+          mkdir -p unsigned && cp "$xpl" unsigned/BrunnerDirect.xpl
+          sum="$(shasum -a 256 unsigned/BrunnerDirect.xpl | awk '{print $1}')"
+          echo "sha256=$sum" >> "$GITHUB_OUTPUT"
+          base="${BASE:-$(git -C source tag --sort=-v:refname --list 'v*' | head -1)}"
+          {
+            echo "## Source"
+            echo "- Repository: $REPO"
+            echo "- Ref: $REF"
+            echo "- Commit: https://github.com/$REPO/commit/$SHA"
+            [ -z "$base" ] || echo "- Changes since $base: https://github.com/$REPO/compare/$base...$SHA"
+            echo "- Unsigned plugin SHA-256: \`$sum\`"
+            echo
+            echo "## Checks"
+            echo '```'; cat vet.txt; echo '```'
+            echo "ClamAV: no detections"
+            if [ -n "$base" ]; then
+              echo; echo "## Files changed since $base"
+              echo '```'; git -C source diff --stat "$base" "$SHA" | tail -40; echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the unsigned plugin
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-xpl
+          path: unsigned/BrunnerDirect.xpl
+          if-no-files-found: error
+          retention-days: 7
+
+  codeql:
+    needs: plan
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.plan.outputs.repo }}
+          ref: ${{ needs.plan.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - name: Start CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: cpp
+          build-mode: manual
+          queries: security-extended
+          source-root: source
+      - name: Build (traced by CodeQL)
+        run: source/src/scripts/build_macos.sh --no-test
+      - name: Analyze (results stay here, nothing is uploaded)
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          upload: never
+          output: sarif-results
+      - name: Fail on any error-level finding
+        run: |
+          total=0
+          for f in sarif-results/*.sarif; do
+            errors="$(jq '[.runs[].results[]? | select(.level=="error")] | length' "$f")"
+            all="$(jq '[.runs[].results[]?] | length' "$f")"
+            echo "$f: $all findings, $errors at error level"
+            echo "CodeQL: $all findings, $errors at error level" >> "$GITHUB_STEP_SUMMARY"
+            total=$((total+errors))
+          done
+          [ "$total" -eq 0 ]
+
+  sign:
+    needs: [plan, build-and-vet, codeql]
+    if: ${{ !inputs.dry_run }}
+    runs-on: macos-15
+    timeout-minutes: 30
+    environment: code-signing
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out these scripts (not the source)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download the unsigned plugin
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned-xpl
+          path: unsigned
+      - name: It is the file that was vetted, and it still passes
+        env:
+          EXPECTED: ${{ needs.build-and-vet.outputs.sha256 }}
+        run: |
+          actual="$(shasum -a 256 unsigned/BrunnerDirect.xpl | awk '{print $1}')"
+          [ "$actual" = "$EXPECTED" ] || { echo "::error::the plugin's SHA-256 $actual is not the vetted $EXPECTED"; exit 1; }
+          scripts/verify_plugin.sh unsigned/BrunnerDirect.xpl --allow baselines/mesmer-allow.txt
+      - name: Sign and notarize
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_API_KEY_P8 }}
+          SIGNING_IDENTITY: ${{ vars.SIGNING_IDENTITY }}
+          TEAM_ID: ${{ vars.TEAM_ID }}
+          NOTARY_KEY_ID: ${{ vars.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ vars.NOTARY_ISSUER_ID }}
+        run: |
+          umask 077
+          secrets_dir="$RUNNER_TEMP/secrets"
+          mkdir -p "$secrets_dir"
+          echo "$P12_BASE64" | base64 --decode > "$secrets_dir/developer-id.p12"
+          printf '%s' "$NOTARY_KEY" > "$secrets_dir/notary.p8"
+          scripts/sign_and_notarize.sh --file unsigned/BrunnerDirect.xpl --out signed/BrunnerDirect.xpl \
+            --identity "$SIGNING_IDENTITY" --team-id "$TEAM_ID" \
+            --p12 "$secrets_dir/developer-id.p12" --p12-password-env P12_PASSWORD \
+            --notary-key "$secrets_dir/notary.p8" --notary-key-id "$NOTARY_KEY_ID" --notary-issuer "$NOTARY_ISSUER_ID"
+      - name: Remove the key material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/secrets"
+      - name: Write the provenance record
+        env:
+          REPO: ${{ needs.plan.outputs.repo }}
+          REF: ${{ needs.plan.outputs.ref }}
+          SHA: ${{ needs.plan.outputs.sha }}
+          UNSIGNED: ${{ needs.build-and-vet.outputs.sha256 }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          signed="$(shasum -a 256 signed/BrunnerDirect.xpl | awk '{print $1}')"
+          echo "$signed  BrunnerDirect.xpl" > signed/BrunnerDirect.xpl.sha256
+          authority="$(codesign -dvv signed/BrunnerDirect.xpl 2>&1 | awk -F= '/^Authority=/{print $2; exit}')"
+          team="$(codesign -dvv signed/BrunnerDirect.xpl 2>&1 | awk -F= '/^TeamIdentifier=/{print $2; exit}')"
+          jq -n --arg repo "$REPO" --arg ref "$REF" --arg sha "$SHA" --arg unsigned "$UNSIGNED" --arg signed "$signed" \
+            --arg authority "$authority" --arg team "$team" --arg run "$RUN_URL" --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{source:{repository:$repo,ref:$ref,commit:$sha},unsignedSha256:$unsigned,signedSha256:$signed,signer:{authority:$authority,team:$team},notarized:true,run:$run,signedAt:$time}' \
+            > signed/provenance.json
+          {
+            echo "## Signed"
+            echo "- Source: $REPO @ $SHA ($REF)"
+            echo "- Signed SHA-256: \`$signed\`"
+            echo "- Signer: $authority (team $team), notarized by Apple"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Attest the signed plugin
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: signed/BrunnerDirect.xpl
+      - name: Keep the signed plugin
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-plugin
+          path: signed/
+          if-no-files-found: error
+          retention-days: 30
