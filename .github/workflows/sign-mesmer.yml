@@ -142,6 +142,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      security-events: read   # read-only: lets the action ask GitHub for its settings; nothing is uploaded
     steps:
       - name: Check out the source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -160,19 +161,36 @@ jobs:
       - name: Analyze (results stay here, nothing is uploaded)
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
+          checkout_path: source
           upload: never
+          upload-database: false
           output: sarif-results
-      - name: Fail on any error-level finding
+      - name: List the findings and fail on any error-level one
         run: |
           total=0
           for f in sarif-results/*.sarif; do
             errors="$(jq '[.runs[].results[]? | select(.level=="error")] | length' "$f")"
             all="$(jq '[.runs[].results[]?] | length' "$f")"
             echo "$f: $all findings, $errors at error level"
-            echo "CodeQL: $all findings, $errors at error level" >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "## CodeQL"
+              echo "$all findings, $errors at error level"
+              if [ "$all" -gt 0 ]; then
+                echo '```'
+                jq -r '.runs[].results[]? | "\(.level // "warning")  \(.ruleId)  \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)  \(.message.text)"' "$f"
+                echo '```'
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
             total=$((total+errors))
           done
           [ "$total" -eq 0 ]
+      - name: Keep the CodeQL results
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: codeql-sarif
+          path: sarif-results/
+          if-no-files-found: error
+          retention-days: 14
 
   sign:
     needs: [plan, build-and-vet, codeql]
