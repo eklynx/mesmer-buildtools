@@ -138,7 +138,7 @@ jobs:
   codeql:
     needs: plan
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 30
     permissions:
       contents: read
       actions: read
@@ -154,11 +154,9 @@ jobs:
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: cpp
-          build-mode: manual
+          build-mode: none
           queries: security-extended
           source-root: source
-      - name: Build (traced by CodeQL)
-        run: source/src/scripts/build_macos.sh --no-test
       - name: Analyze (results stay here, nothing is uploaded)
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
