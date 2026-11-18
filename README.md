@@ -15,6 +15,7 @@ scans the source and the plugin, and only then signs and notarizes it and return
 | [docs/verification.md](docs/verification.md) | every check on the plugin |
 | [docs/source-rules.md](docs/source-rules.md) | what may be built: the allowlist and the ref rule |
 | [docs/setup.md](docs/setup.md) | the one-time certificate, key and repository setup |
+| [docs/watch-list.md](docs/watch-list.md) | open upstream issues to keep an eye on |
 | [SECURITY.md](SECURITY.md) | the threat model and its limits |
 
 Tests (macOS): `tests/test-verify-plugin.sh`, `tests/test-sign-and-notarize.sh`,
